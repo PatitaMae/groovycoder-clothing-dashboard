@@ -78,3 +78,31 @@ fig_q1 = px.bar(
     title="Top-Selling Products (By Quantity)",
 )
 st.plotly_chart(fig_q1, use_container_width=True)
+
+# ---------------------------------------------------------
+# Q2: Revenue by Category
+# ---------------------------------------------------------
+
+st.header("Q2: Revenue by Category")
+
+q2 = """
+SELECT 
+    category_name,
+    SUM(total_revenue) AS revenue
+FROM v_variant_sales_summary
+GROUP BY category_name
+ORDER BY revenue DESC;
+"""
+
+df_q2 = run_query(q2)
+
+st.subheader("Revenue by Category")
+st.dataframe(df_q2)
+
+fig_q2 = px.bar(
+    df_q2,
+    x="category_name",
+    y="revenue",
+    title="Total Revenue by Category",
+)
+st.plotly_chart(fig_q2, use_container_width=True)
