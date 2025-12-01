@@ -30,7 +30,12 @@ def run_query(query):
 st.title("GroovyCoder Clothing – Analytics Dashboard")
 
 # Create tabs
-tab_overview, tab_products = st.tabs(["Overview", "Products & Categories"])
+tab_overview, tab_products, tab_sales = st.tabs([
+    "Overview",
+    "Products & Categories",
+    "Sales Performance"
+])
+
 
 # =========================================================
 # TAB 1: OVERVIEW
@@ -114,3 +119,55 @@ with tab_products:
     )
     st.plotly_chart(fig_q2, use_container_width=True)
 
+# =========================================================
+# TAB 3: SALES PERFORMANCE
+# =========================================================
+with tab_sales:
+
+    # ---------------------------------------------------------
+    # Q3: Monthly Revenue Trend
+    # ---------------------------------------------------------
+    st.header("Q3: Monthly Revenue Trend")
+
+    q3 = """
+    SELECT 
+        DATE_FORMAT(order_date, '%Y-%m') AS month,
+        SUM(total_amount) AS revenue
+    FROM Orders
+    WHERE status IN ('paid','shipped')
+    GROUP BY month
+    ORDER BY month;
+    """
+
+    df_q3 = run_query(q3)
+
+    st.subheader("Revenue by Month")
+    st.dataframe(df_q3)
+
+    fig_q3 = px.line(
+        df_q3,
+        x="month",
+        y="revenue",
+        title="Monthly Revenue Trend"
+    )
+    st.plotly_chart(fig_q3, use_container_width=True)
+
+    # ---------------------------------------------------------
+    # Q4: Average Order Value (AOV)
+    # ---------------------------------------------------------
+    st.header("Q4: Average Order Value (AOV)")
+
+    q4 = """
+    SELECT AVG(total_amount) AS aov
+    FROM Orders
+    WHERE status IN ('paid','shipped');
+    """
+
+    df_q4 = run_query(q4)
+
+    aov_value = round(df_q4['aov'][0], 2)
+
+    st.metric(
+        label="Average Order Value (AOV)",
+        value=f"${aov_value}"
+    )
