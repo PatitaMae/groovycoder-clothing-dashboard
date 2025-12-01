@@ -30,12 +30,15 @@ def run_query(query):
 st.title("GroovyCoder Clothing – Analytics Dashboard")
 
 # Create tabs
-tab_overview, tab_products, tab_sales = st.tabs([
-    "Overview",
-    "Products & Categories",
-    "Sales Performance"
-])
-
+tab_overview, tab_products, tab_sales, tab_customers, tab_prefs = st.tabs(
+    [
+        "Overview",
+        "Products & Categories",
+        "Sales Performance",
+        "Customers",
+        "Preferences",
+    ]
+)
 
 # =========================================================
 # TAB 1: OVERVIEW
@@ -123,7 +126,6 @@ with tab_products:
 # TAB 3: SALES PERFORMANCE
 # =========================================================
 with tab_sales:
-
     # ---------------------------------------------------------
     # Q3: Monthly Revenue Trend
     # ---------------------------------------------------------
@@ -148,7 +150,7 @@ with tab_sales:
         df_q3,
         x="month",
         y="revenue",
-        title="Monthly Revenue Trend"
+        title="Monthly Revenue Trend",
     )
     st.plotly_chart(fig_q3, use_container_width=True)
 
@@ -165,9 +167,134 @@ with tab_sales:
 
     df_q4 = run_query(q4)
 
-    aov_value = round(df_q4['aov'][0], 2)
+    aov_value = round(df_q4["aov"][0], 2)
 
     st.metric(
         label="Average Order Value (AOV)",
-        value=f"${aov_value}"
+        value=f"${aov_value}",
     )
+
+# =========================================================
+# TAB 4: CUSTOMERS
+# =========================================================
+with tab_customers:
+    # ---------------------------------------------------------
+    # Q5: Top Customers by Spend
+    # ---------------------------------------------------------
+    st.header("Q5: Top Customers by Spend")
+
+    q5 = """
+    SELECT 
+        u.user_id,
+        CONCAT(u.first_name, ' ', u.last_name) AS customer_name,
+        COUNT(DISTINCT o.order_id) AS order_count,
+        SUM(o.total_amount) AS total_spent
+    FROM Orders o
+    JOIN Users u ON o.user_id = u.user_id
+    WHERE o.status IN ('paid','shipped')
+    GROUP BY u.user_id, customer_name
+    ORDER BY total_spent DESC
+    LIMIT 10;
+    """
+
+    df_q5 = run_query(q5)
+
+    st.subheader("Top 10 Customers by Total Spend")
+    st.dataframe(df_q5)
+
+    fig_q5 = px.bar(
+        df_q5,
+        x="customer_name",
+        y="total_spent",
+        title="Top Customers by Total Revenue",
+    )
+    st.plotly_chart(fig_q5, use_container_width=True)
+
+# =========================================================
+# TAB 5: PREFERENCES (Sizes, Colors, Day of Week)
+# =========================================================
+with tab_prefs:
+    # ---------------------------------------------------------
+    # Q6: Popular Sizes
+    # ---------------------------------------------------------
+    st.header("Q6: Popular Sizes")
+
+    q6 = """
+    SELECT 
+        pv.size,
+        SUM(oi.quantity) AS total_quantity
+    FROM OrderItems oi
+    JOIN ProductVariants pv ON oi.variant_id = pv.variant_id
+    GROUP BY pv.size
+    ORDER BY total_quantity DESC;
+    """
+
+    df_q6 = run_query(q6)
+
+    st.subheader("Units Sold by Size")
+    st.dataframe(df_q6)
+
+    fig_q6 = px.bar(
+        df_q6,
+        x="size",
+        y="total_quantity",
+        title="Most Popular Sizes",
+    )
+    st.plotly_chart(fig_q6, use_container_width=True)
+
+    # ---------------------------------------------------------
+    # Q7: Popular Colors
+    # ---------------------------------------------------------
+    st.header("Q7: Popular Colors")
+
+    q7 = """
+    SELECT 
+        pv.color,
+        SUM(oi.quantity) AS total_quantity
+    FROM OrderItems oi
+    JOIN ProductVariants pv ON oi.variant_id = pv.variant_id
+    GROUP BY pv.color
+    ORDER BY total_quantity DESC;
+    """
+
+    df_q7 = run_query(q7)
+
+    st.subheader("Units Sold by Color")
+    st.dataframe(df_q7)
+
+    fig_q7 = px.bar(
+        df_q7,
+        x="color",
+        y="total_quantity",
+        title="Most Popular Colors",
+    )
+    st.plotly_chart(fig_q7, use_container_width=True)
+
+    # ---------------------------------------------------------
+    # Q8: Sales by Day of Week
+    # ---------------------------------------------------------
+    st.header("Q8: Sales by Day of Week")
+
+    q8 = """
+    SELECT 
+        DAYNAME(order_date) AS day_name,
+        COUNT(*) AS order_count,
+        SUM(total_amount) AS revenue
+    FROM Orders
+    WHERE status IN ('paid','shipped')
+    GROUP BY day_name
+    ORDER BY FIELD(day_name, 'Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday');
+    """
+
+    df_q8 = run_query(q8)
+
+    st.subheader("Orders and Revenue by Day of Week")
+    st.dataframe(df_q8)
+
+    fig_q8 = px.bar(
+        df_q8,
+        x="day_name",
+        y="revenue",
+        title="Revenue by Day of Week",
+    )
+    st.plotly_chart(fig_q8, use_container_width=True)
