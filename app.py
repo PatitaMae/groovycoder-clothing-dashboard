@@ -144,13 +144,14 @@ with tab_sales:
     st.subheader("Revenue by Month")
     st.dataframe(df_q3)
 
-    fig_q3 = px.line(
-        df_q3,
-        x="month",
-        y="revenue",
-        title="Monthly Revenue Trend"
-    )
-    st.plotly_chart(fig_q3, use_container_width=True)
+    fig_q3 = px.bar(
+    df_q3,
+    x="month",
+    y="revenue",
+    title="Monthly Revenue Trend"
+)
+st.plotly_chart(fig_q3, use_container_width=True)
+
 
     # ---------------------------------------------------------
     # Q4: Average Order Value (AOV)
