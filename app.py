@@ -37,6 +37,44 @@ try:
     df_test = run_query(test_query)
     st.success("Connected to RDS successfully! Showing sample data from Orders:")
     st.dataframe(df_test)
+
+    # ---------------------------------------------------------
+# Q1: Top-Selling Products by Quantity
+# ---------------------------------------------------------
+
+st.header("Q1: Top-Selling Products (By Quantity Sold)")
+
+q1 = """
+SELECT 
+    p.product_name,
+    pv.SKU,
+    pv.color,
+    pv.size,
+    SUM(oi.quantity) AS total_quantity_sold
+FROM OrderItems oi
+JOIN ProductVariants pv ON oi.variant_id = pv.variant_id
+JOIN Products p ON pv.product_id = p.product_id
+GROUP BY p.product_name, pv.SKU, pv.color, pv.size
+ORDER BY total_quantity_sold DESC
+LIMIT 10;
+"""
+
+df_q1 = run_query(q1)
+
+st.subheader("Top 10 Best-Selling Variants")
+st.dataframe(df_q1)
+
+# Bar chart
+import plotly.express as px
+fig_q1 = px.bar(
+    df_q1,
+    x="SKU",
+    y="total_quantity_sold",
+    color="product_name",
+    title="Top-Selling Products (By Quantity)",
+)
+st.plotly_chart(fig_q1, use_container_width=True)
+
 except Exception as e:
     st.error("Error connecting to the database:")
     st.code(str(e))
