@@ -31,11 +31,6 @@ st.title("GroovyCoder Clothing – Analytics Dashboard")
 
 st.write("Testing connection to the database...")
 
-
-except Exception as e:
-    st.error("Error connecting to the database:")
-    st.code(str(e))
-
 try:
     # Simple test: show first 10 orders (adjust table name if needed)
     test_query = "SELECT * FROM Orders LIMIT 10;"
@@ -43,7 +38,11 @@ try:
     st.success("Connected to RDS successfully! Showing sample data from Orders:")
     st.dataframe(df_test)
 
-    # ---------------------------------------------------------
+except Exception as e:
+    st.error("Error connecting to the database:")
+    st.code(str(e))
+
+# ---------------------------------------------------------
 # Q1: Top-Selling Products by Quantity
 # ---------------------------------------------------------
 
