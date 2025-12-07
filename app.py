@@ -298,3 +298,96 @@ with tab_prefs:
         title="Revenue by Day of Week",
     )
     st.plotly_chart(fig_q8, use_container_width=True)
+
+# =========================================================
+# TAB 9: DEMAND FORECASTING
+# =========================================================
+tab_forecast = st.tabs(["📈 Demand Forecast"])[0]
+
+with tab_forecast:
+    st.header("Monthly Demand Forecast (Linear Regression)")
+
+    # ----------------------------------------
+    # 1. SQL: Get monthly sales from database
+    # ----------------------------------------
+    query_forecast = """
+    SELECT 
+        DATE_FORMAT(o.order_date, '%Y-%m') AS month,
+        SUM(oi.quantity) AS units_sold
+    FROM Orders o
+    JOIN OrderItems oi ON o.order_id = oi.order_id
+    WHERE o.status IN ('paid','shipped')
+    GROUP BY month
+    ORDER BY month;
+    """
+
+    df = run_query(query_forecast)
+
+    if df.empty:
+        st.warning("Not enough sales data to create a forecast yet.")
+    else:
+        # ----------------------------------------
+        # 2. Prepare data
+        # ----------------------------------------
+        df['month_index'] = range(len(df))  # 0, 1, 2, ...
+
+        # ----------------------------------------
+        # 3. Fit Linear Regression
+        # ----------------------------------------
+        from sklearn.linear_model import LinearRegression
+        import numpy as np
+
+        X = df[['month_index']]
+        y = df['units_sold']
+
+        model = LinearRegression()
+        model.fit(X, y)
+
+        # ----------------------------------------
+        # 4. Forecast next 3 months
+        # ----------------------------------------
+        future_steps = 3
+        future_index = np.arange(len(df), len(df) + future_steps)
+
+        forecast = model.predict(future_index.reshape(-1, 1))
+
+        df_forecast = pd.DataFrame({
+            'month_index': future_index,
+            'forecast_units_sold': forecast
+        })
+
+        # ----------------------------------------
+        # 5. Display results
+        # ----------------------------------------
+        st.subheader("Historical Monthly Sales")
+        st.dataframe(df)
+
+        st.subheader("Forecast for Next 3 Months")
+        st.dataframe(df_forecast)
+
+        # ----------------------------------------
+        # 6. Plot Results
+        # ----------------------------------------
+        import plotly.express as px
+
+        # Combine for plotting
+        df_plot = pd.concat([
+            df[['month_index', 'units_sold']]
+              .rename(columns={'units_sold': 'value'})
+              .assign(type='Historical'),
+
+            df_forecast
+              .rename(columns={'forecast_units_sold': 'value'})
+              .assign(type='Forecast')
+        ])
+
+        fig = px.line(
+            df_plot,
+            x="month_index",
+            y="value",
+            color="type",
+            markers=True,
+            title="Monthly Sales Forecast"
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
