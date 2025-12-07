@@ -168,11 +168,14 @@ with tab_sales:
 
     df_q4 = run_query(q4)
 
-    aov_value = round(df_q4["aov"][0], 2)
-
-    st.metric(
-        label="Average Order Value (AOV)",
-        value=f"${aov_value}",
+    # Handle case where no orders exist
+    if df_q4["aov"].isna().all():
+        st.warning("No paid or shipped orders found — cannot compute AOV yet.")
+    else:
+        aov_value = round(df_q4["aov"][0], 2)
+        st.metric(
+            label="Average Order Value (AOV)",
+            value=f"${aov_value}",
     )
 
 # =========================================================
