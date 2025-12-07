@@ -307,6 +307,9 @@ with tab_prefs:
 # TAB 6: DEMAND FORECASTING
 # =========================================================
 
+# =========================================================
+# TAB 6: DEMAND FORECASTING
+# =========================================================
 with tab_forecast:
     st.header("Monthly Demand Forecast (Linear Regression)")
 
@@ -332,16 +335,22 @@ with tab_forecast:
         # ----------------------------------------
         # 2. Prepare data
         # ----------------------------------------
-        df['month_index'] = range(len(df))  # 0, 1, 2, ...
+        import numpy as np
+        from sklearn.linear_model import LinearRegression
+        import plotly.graph_objects as go
+
+        # month as datetime + label
+        df["month"] = pd.to_datetime(df["month"])
+        df["month_label"] = df["month"].dt.strftime("%Y-%m")
+
+        # numeric index for regression
+        df["month_index"] = range(len(df))  # 0, 1, 2, ...
 
         # ----------------------------------------
         # 3. Fit Linear Regression
         # ----------------------------------------
-        from sklearn.linear_model import LinearRegression
-        import numpy as np
-
-        X = df[['month_index']]
-        y = df['units_sold']
+        X = df[["month_index"]]
+        y = df["units_sold"]
 
         model = LinearRegression()
         model.fit(X, y)
@@ -352,45 +361,112 @@ with tab_forecast:
         future_steps = 3
         future_index = np.arange(len(df), len(df) + future_steps)
 
+        # generate future month labels
+        last_month = df["month"].max()
+        future_months = [
+            (last_month + pd.DateOffset(months=i)).strftime("%Y-%m")
+            for i in range(1, future_steps + 1)
+        ]
+
         forecast = model.predict(future_index.reshape(-1, 1))
 
         df_forecast = pd.DataFrame({
-            'month_index': future_index,
-            'forecast_units_sold': forecast
+            "month_index": future_index,
+            "forecast_units_sold": forecast,
+            "month_label": future_months
         })
+
+        # simple +/- 10% confidence band (for visualization)
+        df_forecast["upper"] = df_forecast["forecast_units_sold"] * 1.10
+        df_forecast["lower"] = df_forecast["forecast_units_sold"] * 0.90
 
         # ----------------------------------------
         # 5. Display results
         # ----------------------------------------
         st.subheader("Historical Monthly Sales")
-        st.dataframe(df)
+        st.dataframe(df[["month_label", "units_sold"]].rename(columns={"month_label": "month"}))
 
         st.subheader("Forecast for Next 3 Months")
-        st.dataframe(df_forecast)
+        st.dataframe(df_forecast[["month_label", "forecast_units_sold"]].rename(
+            columns={"month_label": "month"}
+        ))
 
         # ----------------------------------------
-        # 6. Plot Results
+        # 6. Plot Results with confidence band
         # ----------------------------------------
-        import plotly.express as px
-
-        # Combine for plotting
-        df_plot = pd.concat([
-            df[['month_index', 'units_sold']]
-              .rename(columns={'units_sold': 'value'})
-              .assign(type='Historical'),
-
-            df_forecast
-              .rename(columns={'forecast_units_sold': 'value'})
-              .assign(type='Forecast')
-        ])
-
-        fig = px.line(
-            df_plot,
-            x="month_index",
-            y="value",
-            color="type",
-            markers=True,
-            title="Monthly Sales Forecast"
+        hist_plot = df[["month_label", "units_sold"]].rename(
+            columns={"month_label": "month", "units_sold": "value"}
+        )
+        fore_plot = df_forecast[["month_label", "forecast_units_sold"]].rename(
+            columns={"month_label": "month", "forecast_units_sold": "value"}
         )
 
+        fig = go.Figure()
+
+        # historical line
+        fig.add_trace(
+            go.Scatter(
+                x=hist_plot["month"],
+                y=hist_plot["value"],
+                mode="lines+markers",
+                name="Historical"
+            )
+        )
+
+        # forecast line
+        fig.add_trace(
+            go.Scatter(
+                x=fore_plot["month"],
+                y=fore_plot["value"],
+                mode="lines+markers",
+                name="Forecast"
+            )
+        )
+
+        # confidence band (upper then lower with fill)
+        fig.add_trace(
+            go.Scatter(
+                x=df_forecast["month_label"],
+                y=df_forecast["upper"],
+                mode="lines",
+                name="Forecast upper (+10%)",
+                showlegend=False
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=df_forecast["month_label"],
+                y=df_forecast["lower"],
+                mode="lines",
+                fill="tonexty",
+                name="Forecast lower (-10%)",
+                showlegend=False
+            )
+        )
+
+        fig.update_layout(title="Monthly Sales Forecast", xaxis_title="Month", yaxis_title="Units Sold")
+
         st.plotly_chart(fig, use_container_width=True)
+
+        # ----------------------------------------
+        # 7. Download CSV button
+        # ----------------------------------------
+        csv = df_forecast[["month_label", "forecast_units_sold"]].rename(
+            columns={"month_label": "month"}
+        ).to_csv(index=False).encode("utf-8")
+
+        st.download_button(
+            label="Download Forecast as CSV",
+            data=csv,
+            file_name="forecast_results.csv",
+            mime="text/csv",
+        )
+
+        # ----------------------------------------
+        # 8. Model description
+        # ----------------------------------------
+        st.caption(
+            "The forecast is generated using a Linear Regression model trained on historical "
+            "monthly unit sales. The shaded area represents a simple ±10% band around the "
+            "point forecast for illustration."
+        )
