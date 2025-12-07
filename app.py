@@ -30,13 +30,14 @@ def run_query(query):
 st.title("GroovyCoder Clothing – Analytics Dashboard")
 
 # Create tabs
-tab_overview, tab_products, tab_sales, tab_customers, tab_prefs = st.tabs(
+tab_overview, tab_products, tab_sales, tab_customers, tab_prefs, tab_forecast = st.tabs(
     [
         "Overview",
         "Products & Categories",
         "Sales Performance",
         "Customers",
         "Preferences",
+        "📈 Demand Forecast"
     ]
 )
 
@@ -300,9 +301,8 @@ with tab_prefs:
     st.plotly_chart(fig_q8, use_container_width=True)
 
 # =========================================================
-# TAB 9: DEMAND FORECASTING
+# TAB 6: DEMAND FORECASTING
 # =========================================================
-tab_forecast = st.tabs(["📈 Demand Forecast"])[0]
 
 with tab_forecast:
     st.header("Monthly Demand Forecast (Linear Regression)")
