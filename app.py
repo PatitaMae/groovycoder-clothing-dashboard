@@ -9,11 +9,21 @@ import plotly.express as px
 
 def get_connection():
     conn = mysql.connector.connect(
-        host=st.secrets["db"]["host"],
-        user=st.secrets["db"]["user"],
-        password=st.secrets["db"]["password"],
-        database=st.secrets["db"]["database"],
-        port=st.secrets["db"]["port"],
+        host=st.secrets["db_read"]["host"],
+        user=st.secrets["db_read"]["user"],
+        password=st.secrets["db_read"]["password"],
+        database=st.secrets["db_read"]["database"],
+        port=st.secrets["db_read"]["port"],
+    )
+    return conn
+
+def get_write_connection():
+    conn = mysql.connector.connect(
+        host=st.secrets["db_write"]["host"],
+        user=st.secrets["db_write"]["user"],
+        password=st.secrets["db_write"]["password"],
+        database=st.secrets["db_write"]["database"],
+        port=st.secrets["db_write"]["port"],
     )
     return conn
 
@@ -58,7 +68,218 @@ with tab_overview:
         st.error("Error connecting to the database:")
         st.code(str(e))
 
+    # =========================================================
+    # DEMO SALES TOOLS
+    # =========================================================
+    st.subheader("Demo Sales Tools")
 
+    if st.button("Generate Demo Sales Order"):
+        try:
+            import random
+            from datetime import datetime, timedelta
+
+            conn = get_write_connection()
+            cur = conn.cursor()
+
+            # -------------------------------
+            # 1) Create or retrieve demo user
+            # -------------------------------
+            demo_email = "button_demo@groovycoder.test"
+            cur.execute("SELECT user_id FROM Users WHERE email = %s", (demo_email,))
+            row = cur.fetchone()
+
+            if row:
+                user_id = row[0]
+            else:
+                cur.execute(
+                    """
+                    INSERT INTO Users (first_name, last_name, email, phone, password_hash, role)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    """,
+                    ("Button", "Demo", demo_email, "555-0300", "dummyhash", "customer"),
+                )
+                user_id = cur.lastrowid
+
+            # -------------------------------
+            # 2) Create or retrieve addresses
+            # -------------------------------
+            def get_or_create_address(user_id, type_):
+                cur.execute(
+                    "SELECT address_id FROM Addresses WHERE user_id = %s AND address_type = %s LIMIT 1",
+                    (user_id, type_),
+                )
+                row = cur.fetchone()
+                if row:
+                    return row[0]
+
+                cur.execute(
+                    """
+                    INSERT INTO Addresses
+                    (user_id, street, city, state, zip, country, address_type)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (user_id, "1 Demo Plaza", "San Diego", "CA", "92101", "USA", type_),
+                )
+                return cur.lastrowid
+
+            ship_id = get_or_create_address(user_id, "shipping")
+            bill_id = get_or_create_address(user_id, "billing")
+
+            # -------------------------------
+            # 3) Select random in-stock variant
+            # -------------------------------
+            cur.execute(
+                """
+                SELECT pv.variant_id, pv.retail_price, pv.stock_quantity, pv.color, pv.size
+                FROM ProductVariants pv
+                WHERE pv.active = 1 AND pv.stock_quantity > 0
+                ORDER BY RAND()
+                LIMIT 1
+                """
+            )
+            row = cur.fetchone()
+
+            if not row:
+                st.error("No variants with stock remaining. Cannot generate demo sale.")
+                conn.close()
+                st.stop()
+
+            variant_id, price, stock, color, size = row
+
+            # -------------------------------
+            # 4) Random quantity (1–3)
+            # -------------------------------
+            quantity = random.randint(1, min(3, stock))
+            line_total = round(price * quantity, 2)
+            tax = round(line_total * 0.08, 2)
+            total = line_total + tax
+
+            # -------------------------------
+            # 5) Random timestamp (within last 6 months)
+            # -------------------------------
+            ts = datetime.utcnow() - timedelta(days=random.randint(0, 180))
+            ts_str = ts.strftime("%Y-%m-%d %H:%M:%S")
+
+            # -------------------------------
+            # 6) Random order status
+            # -------------------------------
+            status = random.choice(["paid", "shipped"])
+
+            # -------------------------------
+            # 7) Insert order
+            # -------------------------------
+            cur.execute(
+                """
+                INSERT INTO Orders
+                (user_id, shipping_address_id, billing_address_id,
+                 order_date, status, subtotal, tax_amount, total_amount)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (user_id, ship_id, bill_id, ts_str, status, line_total, tax, total),
+            )
+            order_id = cur.lastrowid
+
+            # -------------------------------
+            # 8) Insert order item
+            # -------------------------------
+            cur.execute(
+                """
+                INSERT INTO OrderItems
+                (order_id, variant_id, quantity, unit_price, line_total)
+                VALUES (%s, %s, %s, %s, %s)
+                """,
+                (order_id, variant_id, quantity, price, line_total),
+            )
+
+            # -------------------------------
+            # 9) Reduce stock
+            # -------------------------------
+            cur.execute(
+                """
+                UPDATE ProductVariants
+                SET stock_quantity = stock_quantity - %s
+                WHERE variant_id = %s
+                """,
+                (quantity, variant_id),
+            )
+
+            conn.commit()
+            conn.close()
+
+            st.success(
+                f"Random order created! Variant {variant_id} ({color or 'N/A'} / {size or 'N/A'}), "
+                f"qty {quantity}, total ${total:.2f} 🎉"
+            )
+
+        except Exception as ex:
+            st.error("Failed to generate demo sales data.")
+            st.code(str(ex))
+
+    # =========================================================
+    # UNDO DEMO SALES BUTTON
+    # =========================================================
+    if st.button("Undo Demo Sales Orders"):
+        try:
+            conn = get_write_connection()
+            cur = conn.cursor()
+
+            demo_email = "button_demo@groovycoder.test"
+
+            # 1. Find demo user
+            cur.execute("SELECT user_id FROM Users WHERE email=%s", (demo_email,))
+            row = cur.fetchone()
+
+            if row:
+                user_id = row[0]
+
+                # 2. Restore stock
+                cur.execute(
+                    """
+                    SELECT oi.variant_id, SUM(oi.quantity)
+                    FROM OrderItems oi
+                    JOIN Orders o ON oi.order_id = o.order_id
+                    WHERE o.user_id = %s
+                    GROUP BY oi.variant_id
+                    """, (user_id,)
+                )
+                for variant_id, qty in cur.fetchall():
+                    cur.execute(
+                        "UPDATE ProductVariants SET stock_quantity = stock_quantity + %s WHERE variant_id = %s",
+                        (qty, variant_id),
+                    )
+
+                # 3. Delete audit rows
+                cur.execute(
+                    """
+                    DELETE FROM OrderItemsAudit
+                    WHERE order_id IN (SELECT order_id FROM Orders WHERE user_id = %s)
+                    """, (user_id,)
+                )
+
+                # 4. Delete order items
+                cur.execute(
+                    """
+                    DELETE FROM OrderItems
+                    WHERE order_id IN (SELECT order_id FROM Orders WHERE user_id = %s)
+                    """, (user_id,)
+                )
+
+                # 5. Delete orders
+                cur.execute("DELETE FROM Orders WHERE user_id = %s", (user_id,))
+
+                # 6. Delete addresses
+                cur.execute("DELETE FROM Addresses WHERE user_id = %s", (user_id,))
+
+                # 7. Delete demo user
+                cur.execute("DELETE FROM Users WHERE user_id = %s", (user_id,))
+
+            conn.commit()
+            conn.close()
+            st.success("Demo sales data removed and inventory restored ✅")
+
+        except Exception as ex:
+            st.error("Failed to undo demo sales data.")
+            st.code(str(ex))
     
 # =========================================================
 # TAB 2: PRODUCTS & CATEGORIES
