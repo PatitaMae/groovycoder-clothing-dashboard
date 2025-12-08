@@ -150,8 +150,9 @@ with tab_overview:
             # 4) Random quantity (1–3)
             # -------------------------------
             quantity = random.randint(1, min(3, stock))
-            line_total = round(price * quantity, 2)
+            line_total = round(float(price) * quantity, 2)
             tax = round(line_total * 0.08, 2)
+
             total = line_total + tax
 
             # -------------------------------
