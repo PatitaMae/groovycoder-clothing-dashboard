@@ -27,16 +27,17 @@ def run_query(query):
 # Streamlit UI
 # -------------------------
 
-st.title("GroovyCoder Clothing – Analytics Dashboard")
+st.title("GroovyCoder Clothing Analytics Dashboard")
 
 # Create tabs
-tab_overview, tab_products, tab_sales, tab_customers, tab_prefs = st.tabs(
+tab_overview, tab_products, tab_sales, tab_customers, tab_prefs, tab_forecast = st.tabs(
     [
         "Overview",
         "Products & Categories",
         "Sales Performance",
         "Customers",
-        "Preferences"
+        "Preferences",
+        "Demand Forecast"
     ]
 )
 
@@ -303,3 +304,167 @@ with tab_prefs:
         title="Revenue by Day of Week",
     )
     st.plotly_chart(fig_q8, use_container_width=True)
+
+# =========================================================
+# TAB 6: DEMAND FORECASTING
+# =========================================================
+with tab_forecast:
+    st.header("Monthly Demand Forecast (Linear Regression)")
+
+    # ----------------------------------------
+    # 1. SQL: Get monthly sales from database
+    # ----------------------------------------
+    query_forecast = """
+    SELECT 
+        DATE_FORMAT(o.order_date, '%Y-%m') AS month,
+        SUM(oi.quantity) AS units_sold
+    FROM Orders o
+    JOIN OrderItems oi ON o.order_id = oi.order_id
+    WHERE o.status IN ('paid','shipped')
+    GROUP BY month
+    ORDER BY month;
+    """
+
+    df = run_query(query_forecast)
+
+    if df.empty:
+        st.warning("Not enough sales data to create a forecast yet.")
+    else:
+        # ----------------------------------------
+        # 2. Prepare data
+        # ----------------------------------------
+        import numpy as np
+        from sklearn.linear_model import LinearRegression
+        import plotly.graph_objects as go
+
+        # month as datetime + label
+        df["month"] = pd.to_datetime(df["month"])
+        df["month_label"] = df["month"].dt.strftime("%Y-%m")
+
+        # numeric index for regression
+        df["month_index"] = range(len(df))  # 0, 1, 2, ...
+
+        # ----------------------------------------
+        # 3. Fit Linear Regression
+        # ----------------------------------------
+        X = df[["month_index"]]
+        y = df["units_sold"]
+
+        model = LinearRegression()
+        model.fit(X, y)
+
+        # ----------------------------------------
+        # 4. Forecast next 3 months
+        # ----------------------------------------
+        future_steps = 3
+        future_index = np.arange(len(df), len(df) + future_steps)
+
+        # generate future month labels
+        last_month = df["month"].max()
+        future_months = [
+            (last_month + pd.DateOffset(months=i)).strftime("%Y-%m")
+            for i in range(1, future_steps + 1)
+        ]
+
+        forecast = model.predict(future_index.reshape(-1, 1))
+
+        df_forecast = pd.DataFrame({
+            "month_index": future_index,
+            "forecast_units_sold": forecast,
+            "month_label": future_months
+        })
+
+        # simple +/- 10% confidence band (for visualization)
+        df_forecast["upper"] = df_forecast["forecast_units_sold"] * 1.10
+        df_forecast["lower"] = df_forecast["forecast_units_sold"] * 0.90
+
+        # ----------------------------------------
+        # 5. Display results
+        # ----------------------------------------
+        st.subheader("Historical Monthly Sales")
+        st.dataframe(df[["month_label", "units_sold"]].rename(columns={"month_label": "month"}))
+
+        st.subheader("Forecast for Next 3 Months")
+        st.dataframe(df_forecast[["month_label", "forecast_units_sold"]].rename(
+            columns={"month_label": "month"}
+        ))
+
+        # ----------------------------------------
+        # 6. Plot Results with confidence band
+        # ----------------------------------------
+        hist_plot = df[["month_label", "units_sold"]].rename(
+            columns={"month_label": "month", "units_sold": "value"}
+        )
+        fore_plot = df_forecast[["month_label", "forecast_units_sold"]].rename(
+            columns={"month_label": "month", "forecast_units_sold": "value"}
+        )
+
+        fig = go.Figure()
+
+        # historical line
+        fig.add_trace(
+            go.Scatter(
+                x=hist_plot["month"],
+                y=hist_plot["value"],
+                mode="lines+markers",
+                name="Historical"
+            )
+        )
+
+        # forecast line
+        fig.add_trace(
+            go.Scatter(
+                x=fore_plot["month"],
+                y=fore_plot["value"],
+                mode="lines+markers",
+                name="Forecast"
+            )
+        )
+
+        # confidence band (upper then lower with fill)
+        fig.add_trace(
+            go.Scatter(
+                x=df_forecast["month_label"],
+                y=df_forecast["upper"],
+                mode="lines",
+                name="Forecast upper (+10%)",
+                showlegend=False
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=df_forecast["month_label"],
+                y=df_forecast["lower"],
+                mode="lines",
+                fill="tonexty",
+                name="Forecast lower (-10%)",
+                showlegend=False
+            )
+        )
+
+        fig.update_layout(title="Monthly Sales Forecast", xaxis_title="Month", yaxis_title="Units Sold")
+
+        st.plotly_chart(fig, use_container_width=True)
+
+        # ----------------------------------------
+        # 7. Download CSV button
+        # ----------------------------------------
+        csv = df_forecast[["month_label", "forecast_units_sold"]].rename(
+            columns={"month_label": "month"}
+        ).to_csv(index=False).encode("utf-8")
+
+        st.download_button(
+            label="Download Forecast as CSV",
+            data=csv,
+            file_name="forecast_results.csv",
+            mime="text/csv",
+        )
+
+        # ----------------------------------------
+        # 8. Model description
+        # ----------------------------------------
+        st.caption(
+            "The forecast is generated using a Linear Regression model trained on historical "
+            "monthly unit sales. The shaded area represents a simple ±10% band around the "
+            "point forecast for illustration."
+        )
