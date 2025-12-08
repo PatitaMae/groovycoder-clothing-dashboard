@@ -61,15 +61,26 @@ with tab_overview:
     st.write("Testing connection to the database...")
 
     try:
-        test_query = "SELECT * FROM Orders LIMIT 10;"
+        test_query = """
+        SELECT 
+            order_id,
+            user_id,
+            status,
+            total_amount,
+            order_date
+        FROM Orders
+        ORDER BY order_date DESC, order_id DESC
+        LIMIT 10;
+        """
         df_test = run_query(test_query)
-        st.success("Connected to RDS successfully! Showing sample data from Orders:")
+        st.success("Connected to RDS successfully! Showing latest 10 orders:")
         st.dataframe(df_test)
     except Exception as e:
         st.error("Error connecting to the database:")
         st.code(str(e))
 
-    
+
+  
 # =========================================================
 # TAB 2: PRODUCTS & CATEGORIES
 # =========================================================
